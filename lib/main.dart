@@ -91,17 +91,72 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
   String _calculate(String expression) {
     try {
-      expression = expression.replaceAll('%', '/100');
       expression = expression.replaceAll('x', '*');
       expression = expression.replaceAll('÷', '/');
-      Parser p = Parser();
-      Expression exp = p.parse(expression);
-      ContextModel cm = ContextModel();
-      double eval = exp.evaluate(EvaluationType.REAL, cm);
-      return eval.toStringAsFixed(6).replaceAll(RegExp(r'\.?0+$'), '');
+
+      if (expression.contains('%')) {
+        return _evaluateModuloExpression(expression);
+      } else {
+        Parser p = Parser();
+        Expression exp = p.parse(expression);
+        ContextModel cm = ContextModel();
+        double eval = exp.evaluate(EvaluationType.REAL, cm);
+        return eval.toStringAsFixed(6).replaceAll(RegExp(r'\.?0+$'), '');
+      }
     } catch (e) {
       return 'Error';
     }
+  }
+
+  String _evaluateModuloExpression(String expr) {
+    try {
+      List<String> parts = [];
+      List<String> operators = [];
+      int start = 0;
+      for (int i = 0; i < expr.length; i++) {
+        if (expr[i] == '+' || expr[i] == '-') {
+          parts.add(expr.substring(start, i));
+          operators.add(expr[i]);
+          start = i + 1;
+        }
+      }
+      parts.add(expr.substring(start));
+
+      int total = 0;
+      bool first = true;
+      for (int i = 0; i < parts.length; i++) {
+        int val = _evaluateModuloSimple(parts[i]);
+        if (first) {
+          total = val;
+          first = false;
+        } else {
+          if (operators[i - 1] == '+') total += val;
+          else if (operators[i - 1] == '-') total -= val;
+        }
+      }
+      return total.toString();
+    } catch (e) {
+      return 'Error';
+    }
+  }
+
+  int _evaluateModuloSimple(String expr) {
+    expr = expr.replaceAll('x', '*').replaceAll('÷', '/');
+    if (!expr.contains('%')) {
+      Parser p = Parser();
+      Expression exp = p.parse(expr);
+      ContextModel cm = ContextModel();
+      double val = exp.evaluate(EvaluationType.REAL, cm);
+      return val.toInt();
+    }
+    List<String> modParts = expr.split('%');
+    int left = _evaluateModuloSimple(modParts[0]);
+    for (int i = 1; i < modParts.length; i++) {
+      int right = _evaluateModuloSimple(modParts[i]);
+      if (right == 0) throw Exception('Modulo by zero');
+      left = left % right;
+    }
+    return left;
   }
 
   List<List<String>> get buttons => [
@@ -125,7 +180,6 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Input/result area at top, fixed height
             Container(
               color: Colors.blueGrey.shade800,
               width: double.infinity,
@@ -156,9 +210,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                     child: Text(
                       result,
                       style: const TextStyle(
-                        fontSize: 32,
-                        color: Colors.white,
-                        fontWeight: FontWeight.normal,
+                        fontSize: 40,
+                        color: Colors.amberAccent,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
                       ),
                       textAlign: TextAlign.right,
                     ),
@@ -167,81 +222,63 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               ),
             ),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final width = constraints.maxWidth;
-                  final height = constraints.maxHeight;
-                  final buttonRows = buttons.length;
-                  final buttonCols = buttons[0].length;
-                  final spacing = 4.0;
-                  final totalSpacingY = spacing * (buttonRows + 1);
-                  final totalSpacingX = spacing * (buttonCols + 1);
+              child: Column(
+                children: buttons.map((row) {
+                  return Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: row.map((txt) {
+                        Color bg;
+                        Color fg;
+                        bool big = false;
+                        if (txt == 'C') {
+                          bg = actionButton;
+                          fg = Colors.blueGrey.shade900;
+                        } else if (txt == 'DEL') {
+                          bg = delButton;
+                          fg = Colors.blueGrey.shade900;
+                        } else if ('÷x-+'.contains(txt)) {
+                          bg = opButton;
+                          fg = Colors.white;
+                        } else if (txt == '=') {
+                          bg = Colors.blueGrey.shade100;
+                          fg = Colors.blueGrey.shade800;
+                          big = true;
+                        } else if (txt == '%') {
+                          bg = actionButton;
+                          fg = Colors.blueGrey.shade900;
+                        } else {
+                          bg = numButton;
+                          fg = Colors.white;
+                        }
 
-                  final buttonHeight = ((height - totalSpacingY) / buttonRows) * 0.85;
-                  final buttonWidth = ((width - totalSpacingX) / buttonCols) * 0.92;
-
-                  return Padding(
-                    padding: EdgeInsets.all(spacing),
-                    child: Column(
-                      children: List.generate(buttonRows, (i) {
-                        return Row(
-                          children: List.generate(buttonCols, (j) {
-                            final txt = buttons[i][j];
-                            Color? fg, bg;
-                            bool big = false;
-                            if (txt == 'C') {
-                              bg = actionButton;
-                              fg = Colors.blueGrey.shade900;
-                            } else if (txt == 'DEL') {
-                              bg = delButton;
-                              fg = Colors.blueGrey.shade900;
-                            } else if ('÷x-+'.contains(txt)) {
-                              bg = opButton;
-                              fg = Colors.white;
-                            } else if (txt == '=') {
-                              bg = Colors.blueGrey.shade100;
-                              fg = Colors.blueGrey.shade800;
-                              big = true;
-                            } else if (txt == '%') {
-                              bg = actionButton;
-                              fg = Colors.blueGrey.shade900;
-                            } else {
-                              bg = numButton;
-                              fg = Colors.white;
-                            }
-                            return Padding(
-                              padding: EdgeInsets.symmetric(
-                                vertical: spacing / 2,
-                                horizontal: spacing / 2,
-                              ),
-                              child: SizedBox(
-                                width: buttonWidth.clamp(38.0, 90.0),
-                                height: buttonHeight.clamp(42.0, 64.0),
-                                child: ElevatedButton(
-                                  onPressed: () => buttonPressed(txt),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: bg ?? numButton,
-                                    foregroundColor: fg ?? Colors.white,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    textStyle: TextStyle(
-                                      fontSize: big ? 22 : 18,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    padding: EdgeInsets.zero,
-                                  ),
-                                  child: Text(txt),
+                        return Expanded(
+                          child: Container(
+                            margin: const EdgeInsets.all(4),
+                            child: ElevatedButton(
+                              onPressed: () => buttonPressed(txt),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: bg,
+                                foregroundColor: fg,
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15),
                                 ),
+                                textStyle: TextStyle(
+                                  fontSize: big ? 24 : 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                padding: EdgeInsets.zero,
+                                shadowColor: Colors.blueGrey.shade700,
                               ),
-                            );
-                          }),
+                              child: Text(txt),
+                            ),
+                          ),
                         );
-                      }),
+                      }).toList(),
                     ),
                   );
-                },
+                }).toList(),
               ),
             ),
           ],
